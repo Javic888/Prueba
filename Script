@@ -1,88 +1,607 @@
---========================================================--
--- ============ SISTEMA DE RUTAS (GUI, RECORRIDO) =========
---========================================================--
+--====================================================--
+-- STEAL A LATAMROT - Versión refactorizada y mejorada
+--====================================================--
 
-local rutaGui = nil
-local rutaActiva = false
-local rutaGrabando = false
-local rutaPuntos = {}
-local rutaDuracion = 10
-local rutaVelocidad = 1
-local rutaRGB = Color3.fromRGB(40,40,40)
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local function crearRutaGUI()
-    if rutaGui then 
-        rutaGui.Enabled = true 
-        return 
+local Window = Rayfield:CreateWindow({
+    Name = "STEAL A LATAMROT",
+    LoadingTitle = "Cargando...",
+    LoadingSubtitle = "By Javic",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "Javix§",
+        FileName = "§Javic UI Bypass§"
+    },
+    KeySystem = false
+})
+
+local TabTPS = Window:CreateTab("TPS", 4483362458)
+local TabPlayer = Window:CreateTab("Player", 4483362458)
+
+-- Servicios
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = game.Players.LocalPlayer
+
+-- ================= TP GUI (Puntos) =================
+-- ScreenGui para la funcionalidad de guardar y tp a punto
+local TP_ScreenGui = Instance.new("ScreenGui")
+TP_ScreenGui.ResetOnSpawn = false
+TP_ScreenGui.Enabled = false
+TP_ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local TP_Frame = Instance.new("Frame")
+TP_Frame.Size = UDim2.new(0, 220, 0, 110)
+TP_Frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+TP_Frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+TP_Frame.Active = true
+TP_Frame.Draggable = true
+TP_Frame.Parent = TP_ScreenGui
+
+local TP_Title = Instance.new("TextLabel")
+TP_Title.Size = UDim2.new(1, 0, 0, 26)
+TP_Title.Position = UDim2.new(0, 0, 0, 0)
+TP_Title.BackgroundTransparency = 1
+TP_Title.Text = "TP Punto - Flotante"
+TP_Title.TextColor3 = Color3.new(1,1,1)
+TP_Title.Font = Enum.Font.SourceSansBold
+TP_Title.TextSize = 18
+TP_Title.Parent = TP_Frame
+
+local BtnAguardar = Instance.new("TextButton")
+BtnAguardar.Size = UDim2.new(0.9, 0, 0, 36)
+BtnAguardar.Position = UDim2.new(0.05, 0, 0, 32)
+BtnAguardar.Text = "Aguardar Punto"
+BtnAguardar.Parent = TP_Frame
+BtnAguardar.AutoButtonColor = true
+BtnAguardar.Font = Enum.Font.SourceSans
+BtnAguardar.TextSize = 16
+BtnAguardar.BackgroundColor3 = Color3.fromRGB(80,80,80)
+BtnAguardar.TextColor3 = Color3.new(1,1,1)
+
+local BtnTPpunto = Instance.new("TextButton")
+BtnTPpunto.Size = UDim2.new(0.9, 0, 0, 36)
+BtnTPpunto.Position = UDim2.new(0.05, 0, 0, 72)
+BtnTPpunto.Text = "TP Punto"
+BtnTPpunto.Parent = TP_Frame
+BtnTPpunto.AutoButtonColor = true
+BtnTPpunto.Font = Enum.Font.SourceSans
+BtnTPpunto.TextSize = 16
+BtnTPpunto.BackgroundColor3 = Color3.fromRGB(60,130,200)
+BtnTPpunto.TextColor3 = Color3.new(1,1,1)
+
+local puntoGuardado = nil
+local savingFeedbackTimer = nil
+local tpFeedbackTimer = nil
+
+-- Guarda la posición actual del HRP
+BtnAguardar.MouseButton1Click:Connect(function()
+    local player = LocalPlayer
+    local char = player and (player.Character or player.CharacterAdded:Wait())
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        hrp = char:FindFirstChildWhichIsA("BasePart") -- fallback
+        if not hrp then
+            BtnAguardar.Text = "Sin HRP"
+            task.wait(1)
+            BtnAguardar.Text = "Aguardar Punto"
+            return
+        end
     end
 
-    rutaGui = Instance.new("ScreenGui")
-    rutaGui.Name = "RutaGui"
-    rutaGui.ResetOnSpawn = false
-    rutaGui.Parent = game.Players.LocalPlayer.PlayerGui
+    puntoGuardado = hrp.Position
+    BtnAguardar.Text = "Punto Aguardado!"
+    if savingFeedbackTimer then savingFeedbackTimer:Cancel() end
+    savingFeedbackTimer = task.delay(1, function()
+        BtnAguardar.Text = "Aguardar Punto"
+        savingFeedbackTimer = nil
+    end)
+end)
 
-    -- Frame principal
+-- Funcion auxiliar: calcula tiempo de tween basado en distancia
+local function calcTweenTime(fromPos, toPos)
+    local dist = (fromPos - toPos).Magnitude
+    local speed = 20 -- unidades por segundo, ajustable (más = más rápido)
+    local t = dist / speed
+    if t < 0.4 then t = 0.4 end
+    if t > 6 then t = 6 end
+    return t
+end
+
+-- TP al punto guardado: primero te sube 10m y luego te lleva flotando al punto guardado
+BtnTPpunto.MouseButton1Click:Connect(function()
+    if not puntoGuardado then
+        BtnTPpunto.Text = "No hay punto"
+        if tpFeedbackTimer then tpFeedbackTimer:Cancel() end
+        tpFeedbackTimer = task.delay(1, function()
+            BtnTPpunto.Text = "TP Punto"
+            tpFeedbackTimer = nil
+        end)
+        return
+    end
+
+    local player = LocalPlayer
+    local char = player and (player.Character or player.CharacterAdded:Wait())
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp then
+        hrp = char:WaitForChild("HumanoidRootPart", 2)
+        if not hrp then
+            BtnTPpunto.Text = "Sin HRP"
+            task.wait(1)
+            BtnTPpunto.Text = "TP Punto"
+            return
+        end
+    end
+
+    -- Teleport instantáneo 10 metros hacia arriba (evitar colisiones)
+    local ok, err = pcall(function()
+        hrp.CFrame = hrp.CFrame + Vector3.new(0, 10, 0)
+    end)
+    if not ok then
+        warn("Error al tp arriba:", err)
+        BtnTPpunto.Text = "Error TP"
+        task.wait(1)
+        BtnTPpunto.Text = "TP Punto"
+        return
+    end
+
+    -- Tras subir, hacer un tween para "flotar" al punto guardado
+    local targetCFrame = CFrame.new(puntoGuardado + Vector3.new(0, 2, 0)) -- llegar un poco arriba del punto para evitar clipping
+    local duration = calcTweenTime(hrp.Position, puntoGuardado)
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local success, tween = pcall(function()
+        return TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+    end)
+    if success and tween then
+        BtnTPpunto.Text = "Viajando..."
+        tween:Play()
+        local finished = false
+        tween.Completed:Connect(function()
+            finished = true
+        end)
+
+        -- Timeout en caso de que nunca termine (seguridad)
+        local timeout = task.delay(duration + 1, function()
+            if not finished then
+                pcall(function() tween:Cancel() end)
+            end
+        end)
+
+        -- Esperar a que termine el tween
+        repeat task.wait(0.05) until finished
+        if timeout then pcall(function() task.cancel(timeout) end) end
+
+        -- Restaurar estado humanoide si es necesario
+        if hum and hum.PlatformStand then
+            hum.PlatformStand = false
+        end
+
+        BtnTPpunto.Text = "Llegaste!"
+        if tpFeedbackTimer then tpFeedbackTimer:Cancel() end
+        tpFeedbackTimer = task.delay(1.2, function()
+            BtnTPpunto.Text = "TP Punto"
+            tpFeedbackTimer = nil
+        end)
+    else
+        warn("No se pudo crear tween para flotar.")
+        BtnTPpunto.Text = "Error Flotar"
+        task.wait(1)
+        BtnTPpunto.Text = "TP Punto"
+    end
+end)
+
+-- Toggle para mostrar/ocultar la GUI de TP (manteniendo la ScreenGui, sin eliminar nada)
+TabTPS:CreateToggle({
+    Name = "Tp Scrip",
+    CurrentValue = false,
+    Callback = function(state)
+        TP_ScreenGui.Enabled = state
+    end
+})
+
+-- ==================================================
+-- Código existente original (spamHit, rejoin, player options, desync, etc.)
+-- Hecho para mantener todo tal cual y sólo integrar la nueva GUI/funcionalidad.
+-- ==================================================
+
+local spamHitToggle = false
+local spamHitLoopTask = nil
+
+local function startSpamHit()
+    if spamHitLoopTask then return end
+    spamHitLoopTask = task.spawn(function()
+        while spamHitToggle do
+            local Players = game:GetService("Players")
+            local targetPlayer = Players:FindFirstChild("mc_danoxsslyxxs")
+            local args = {"Matamoscas de Hierro", targetPlayer, Vector3.new(-0.240579, 0, 0.970629)}
+            if targetPlayer then
+                pcall(function()
+                    game:GetService("ReplicatedStorage").Remotes.PushHitRequest:FireServer(unpack(args))
+                end)
+            end
+            task.wait(0.1)
+        end
+        spamHitLoopTask = nil
+    end)
+end
+
+local function stopSpamHit()
+    spamHitToggle = false
+end
+
+TabTPS:CreateToggle({
+    Name = "Spam Hit",
+    CurrentValue = false,
+    Callback = function(state)
+        spamHitToggle = state
+        if state then startSpamHit() else stopSpamHit() end
+    end
+})
+
+-- Rejoin / Server browser (mantenido exactamente como estaba; integrado)
+local rejoinGui = nil
+
+local function getServers(cursor)
+    local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+    if cursor then url = url .. "&cursor=" .. tostring(cursor) end
+    local ok, raw = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if not ok or not raw then return nil end
+    local success, decoded = pcall(function()
+        return HttpService:JSONDecode(raw)
+    end)
+    if not success then return nil end
+    return decoded
+end
+
+local function createRejoinGUI()
+    if rejoinGui then
+        rejoinGui.Enabled = true
+        return
+    end
+
+    rejoinGui = Instance.new("ScreenGui")
+    rejoinGui.Name = "RejoinGui"
+    rejoinGui.ResetOnSpawn = false
+    rejoinGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 230)
-    frame.Position = UDim2.new(0.12, 0, 0.5, 0)
-    frame.BackgroundColor3 = rutaRGB
+    frame.Size = UDim2.new(0, 520, 0, 420)
+    frame.Position = UDim2.new(0.25, 0, 0.25, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     frame.Active = true
     frame.Draggable = true
-    frame.Parent = rutaGui
+    frame.Parent = rejoinGui
 
-    -- Título
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1,0,0,28)
-    title.Position = UDim2.new(0,0,0,0)
-    title.Text = "GUI RUTA by Javic"
-    title.BackgroundTransparency = 1
-    title.TextColor3 = Color3.new(1,1,1)
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    title.Text = "Lista de Servidores"
+    title.TextColor3 = Color3.new(1, 1, 1)
     title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 20
+    title.TextSize = 22
     title.Parent = frame
 
-    -- Botón Guardar Ruta
-    local guardarBtn = Instance.new("TextButton")
-    guardarBtn.Size = UDim2.new(0.9,0,0,35)
-    guardarBtn.Position = UDim2.new(0.05,0,0,35)
-    guardarBtn.Text = "Guardar Ruta"
-    guardarBtn.TextColor3 = Color3.new(1,1,1)
-    guardarBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
-    guardarBtn.Font = Enum.Font.SourceSans
-    guardarBtn.TextSize = 17
-    guardarBtn.Parent = frame
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -20, 1, -60)
+    scroll.Position = UDim2.new(0, 10, 0, 50)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 6
+    scroll.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    scroll.Parent = frame
 
-    -- Botón Iniciar Ruta
-    local iniciarBtn = Instance.new("TextButton")
-    iniciarBtn.Size = UDim2.new(0.9,0,0,35)
-    iniciarBtn.Position = UDim2.new(0.05,0,0,75)
-    iniciarBtn.Text = "Iniciar Ruta"
-    iniciarBtn.TextColor3 = Color3.new(1,1,1)
-    iniciarBtn.BackgroundColor3 = Color3.fromRGB(60,130,200)
-    iniciarBtn.Font = Enum.Font.SourceSans
-    iniciarBtn.TextSize = 17
-    iniciarBtn.Parent = frame
+    local UIList = Instance.new("UIListLayout")
+    UIList.Parent = scroll
+    UIList.Padding = UDim.new(0, 5)
 
-    -- Slider Duración
-    local durLabel = Instance.new("TextLabel")
-    durLabel.Size = UDim2.new(1,0,0,20)
-    durLabel.Position = UDim2.new(0,0,0,120)
-    durLabel.BackgroundTransparency = 1
-    durLabel.Text = "Duración total: "..rutaDuracion.."s"
-    durLabel.TextColor3 = Color3.new(1,1,1)
-    durLabel.TextSize = 15
-    durLabel.Parent = frame
+    local function clearServerEntries()
+        for _, child in ipairs(scroll:GetChildren()) do
+            if child ~= UIList then
+                child:Destroy()
+            end
+        end
+    end
 
-    local durSlider = Instance.new("TextButton")
-    durSlider.Size = UDim2.new(0.9,0,0,25)
-    durSlider.Position = UDim2.new(0.05,0,0,145)
-    durSlider.BackgroundColor3 = Color3.fromRGB(90,90,90)
-    durSlider.Text = "Cambiar Duración"
-    durSlider.TextColor3 = Color3.new(1,1,1)
-    durSlider.Parent = frame
+    local function loadServers()
+        clearServerEntries()
+        local cursor = nil
+        local anyServer = false
+        repeat
+            local data = getServers(cursor)
+            if not data or not data.data then break end
+            for _, server in ipairs(data.data) do
+                anyServer = true
+                local serverFrame = Instance.new("Frame")
+                serverFrame.Size = UDim2.new(1, -10, 0, 60)
+                serverFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                serverFrame.Parent = scroll
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(0.65, 0, 1, 0)
+                label.Position = UDim2.new(0, 10, 0, 0)
+                label.BackgroundTransparency = 1
+                label.Text = "Jugadores: "..tostring(server.playing).."/"..tostring(server.maxPlayers)
+                label.TextColor3 = Color3.new(1, 1, 1)
+                label.TextSize = 18
+                label.TextXAlignment = Enum.TextXAlignment.Left
+                label.Parent = serverFrame
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(0.25, 0, 0.7, 0)
+                btn.Position = UDim2.new(0.72, 0, 0.15, 0)
+                btn.Text = "Entrar"
+                btn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+                btn.TextColor3 = Color3.new(1,1,1)
+                btn.Font = Enum.Font.SourceSansBold
+                btn.TextSize = 18
+                btn.Parent = serverFrame
+                local serverId = server.id
+                btn.MouseButton1Click:Connect(function()
+                    pcall(function()
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, LocalPlayer)
+                    end)
+                end)
+            end
+            cursor = data.nextPageCursor
+            task.wait(0.12)
+        until not cursor
+        task.wait()
+        scroll.CanvasSize = UDim2.new(0, 0, 0, UIList.AbsoluteContentSize.Y)
+        if not anyServer then
+            local noLabel = Instance.new("TextLabel")
+            noLabel.Size = UDim2.new(1, -10, 0, 30)
+            noLabel.Position = UDim2.new(0, 5, 0, 10)
+            noLabel.BackgroundTransparency = 1
+            noLabel.Text = "No se encontraron servidores."
+            noLabel.TextColor3 = Color3.new(1,1,1)
+            noLabel.TextSize = 18
+            noLabel.Parent = scroll
+            task.wait()
+            scroll.CanvasSize = UDim2.new(0,0,0,UIList.AbsoluteContentSize.Y)
+        end
+    end
 
-    -- Slider Velocidad Ruta
-    local velLabel = Instance.new("TextLabel")
-    velLabel.Size = UDim2.new(1,0,0,20)
-    velLabel.Position = UDim2.new(0,0,0,175)
-    velLabel.BackgroundTransparency =
+    local refreshBtn = Instance.new("TextButton")
+    refreshBtn.Size = UDim2.new(0, 120, 0, 30)
+    refreshBtn.Position = UDim2.new(1, -130, 0, 8)
+    refreshBtn.AnchorPoint = Vector2.new(0,0)
+    refreshBtn.Text = "Recargar"
+    refreshBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    refreshBtn.TextColor3 = Color3.new(1,1,1)
+    refreshBtn.Font = Enum.Font.SourceSans
+    refreshBtn.TextSize = 16
+    refreshBtn.Parent = frame
+
+    refreshBtn.MouseButton1Click:Connect(function()
+        loadServers()
+    end)
+
+    loadServers()
+end
+
+local function disableRejoinGUI()
+    if rejoinGui then rejoinGui.Enabled = false end
+end
+
+TabTPS:CreateToggle({
+    Name = "Rejoin",
+    CurrentValue = false,
+    Callback = function(on)
+        if on then createRejoinGUI() else disableRejoinGUI() end
+    end
+})
+
+-- Player related variables y toggles (mantener)
+local humanoid = nil
+local speedToggle = false
+local currentSpeed = 16
+
+local function updateHumanoid()
+    local char = game.Players.LocalPlayer.Character
+    if char then humanoid = char:FindFirstChildOfClass("Humanoid") end
+end
+
+game.Players.LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    updateHumanoid()
+end)
+
+updateHumanoid()
+
+TabPlayer:CreateToggle({
+    Name = "Speed",
+    CurrentValue = false,
+    Callback = function(state)
+        speedToggle = state
+        if humanoid then humanoid.WalkSpeed = state and currentSpeed or 16 end
+    end
+})
+
+TabPlayer:CreateSlider({
+    Name = "Speed Barra",
+    Range = {16, 200},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(v)
+        currentSpeed = v
+        if speedToggle and humanoid then humanoid.WalkSpeed = v end
+    end
+})
+
+TabPlayer:CreateSlider({
+    Name = "Color RGB",
+    Range = {0, 255},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(v)
+        TP_Frame.BackgroundColor3 = Color3.fromRGB(v, 50, 255 - v)
+    end
+})
+
+local superToggle = false
+local jumpBoost = 200
+local jumpDefault = 50
+
+TabPlayer:CreateToggle({
+    Name = "SuperSalto",
+    CurrentValue = false,
+    Callback = function(state)
+        superToggle = state
+        if humanoid then humanoid.JumpPower = state and jumpBoost or jumpDefault end
+    end
+})
+
+TabPlayer:CreateSlider({
+    Name = "Fuerza Salto",
+    Range = {50, 300},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(v)
+        jumpBoost = v
+        if superToggle and humanoid then humanoid.JumpPower = v end
+    end
+})
+
+local function ragdollPlayer(duration)
+    duration = duration or 3
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    hum.PlatformStand = true
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(0, 40000, 0)
+    bv.Velocity = Vector3.new(0, -60, 0)
+    bv.Parent = hrp
+    task.delay(0.25, function() if bv then bv:Destroy() end end)
+    task.delay(duration, function() if hum then hum.PlatformStand = false end end)
+end
+
+TabPlayer:CreateButton({
+    Name = "Ragdoll",
+    Callback = function() ragdollPlayer(3) end
+})
+
+-- Desync Body (mantener y GUI draggable)
+local desyncActive = false
+local desyncGui = nil
+local desyncBP = nil
+local desyncBG = nil
+
+local function enableDesync()
+    if desyncActive then return end
+    desyncActive = true
+    local char = game.Players.LocalPlayer.Character or game.Players.LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    hum.PlatformStand = true
+    desyncBP = Instance.new("BodyPosition")
+    desyncBP.MaxForce = Vector3.new(1e6,1e6,1e6)
+    desyncBP.Position = hrp.Position + Vector3.new(0,2,0)
+    desyncBP.Parent = hrp
+    desyncBG = Instance.new("BodyGyro")
+    desyncBG.MaxTorque = Vector3.new(1e6,1e6,1e6)
+    desyncBG.CFrame = hrp.CFrame
+    desyncBG.Parent = hrp
+end
+
+local function disableDesync()
+    desyncActive = false
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false end
+    if desyncBP then desyncBP:Destroy() end
+    if desyncBG then desyncBG:Destroy() end
+    desyncBP = nil
+    desyncBG = nil
+end
+
+local function createDesyncGUI()
+    if desyncGui then return end
+    desyncGui = Instance.new("ScreenGui")
+    desyncGui.ResetOnSpawn = false
+    desyncGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 220, 0, 100)
+    frame.Position = UDim2.new(0.7, 0, 0.6, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = desyncGui
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,-20,0,50)
+    btn.Position = UDim2.new(0,10,0,25)
+    btn.Text = "Desync Body"
+    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 18
+    btn.Parent = frame
+    btn.MouseButton1Click:Connect(function()
+        if desyncActive then
+            disableDesync()
+            btn.Text = "Desync Body"
+        else
+            enableDesync()
+            btn.Text = "Desync ON"
+        end
+    end)
+end
+
+local function removeDesyncGUI()
+    if desyncGui then desyncGui:Destroy() end
+    desyncGui = nil
+    disableDesync()
+end
+
+TabPlayer:CreateToggle({
+    Name = "Desync Body (GUI)",
+    CurrentValue = false,
+    Callback = function(v)
+        if v then createDesyncGUI() else removeDesyncGUI() end
+    end
+})
+
+-- Fin del script (todo lo demás quedó intacto; la funcionalidad de TP Flotante fue reemplazada
+-- por la GUI flotante con "Aguardar Punto" y "TP Punto" que sube 10m y te lleva flotando al punto).
+
+-- ===========================
+-- INTEGRACIÓN: GUI RUTA (TPS)
+-- ===========================
+-- (Agregar al final del script sin eliminar nada)
+
+-- Variables internas para la ruta
+local rutaGui = nil
+local rutaGrabando = false
+local rutaPuntos = {}
+local rutaGuardada = false
+local rutaDuracion = 10        -- segundos (ajustable desde Rayfield)
+local rutaVelocidad = 1        -- multiplicador (1 = normal)
+local rutaRGBv = 50            -- valor para color (0-255)
+local rutaTweenMin = 0.2
+local rutaTweenMax = 6
+
+local antiAfkToggle = false
+local antiAfkConnection = nil
+
+-- Reusar TweenService y LocalPlayer ya definidos arriba
+-- Función auxiliar: calcula tiempo por segmento respetando velocidad y distancia
+local function calcDurationForSegment(fromPos, toPos, totalDuration, segments, speedMult)
+    if segments <= 0 then segments = 1 end
+    local base = totalDuration / segments
+    -- aplicar speed multiplier (más alto = más rápido -> menor duración)
+    local dur = base / math.max(0.0001, speedMult)
+    if dur < rutaTweenMin then dur = rutaTweenMin end
+    if dur > rutaTweenMax then dur = rutaTweenMax end
+    return dur
+end
+
+-- Crear GUI flotante de Ruta
+local function c
