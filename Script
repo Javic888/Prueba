@@ -1,0 +1,88 @@
+--========================================================--
+-- ============ SISTEMA DE RUTAS (GUI, RECORRIDO) =========
+--========================================================--
+
+local rutaGui = nil
+local rutaActiva = false
+local rutaGrabando = false
+local rutaPuntos = {}
+local rutaDuracion = 10
+local rutaVelocidad = 1
+local rutaRGB = Color3.fromRGB(40,40,40)
+
+local function crearRutaGUI()
+    if rutaGui then 
+        rutaGui.Enabled = true 
+        return 
+    end
+
+    rutaGui = Instance.new("ScreenGui")
+    rutaGui.Name = "RutaGui"
+    rutaGui.ResetOnSpawn = false
+    rutaGui.Parent = game.Players.LocalPlayer.PlayerGui
+
+    -- Frame principal
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 260, 0, 230)
+    frame.Position = UDim2.new(0.12, 0, 0.5, 0)
+    frame.BackgroundColor3 = rutaRGB
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = rutaGui
+
+    -- Título
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1,0,0,28)
+    title.Position = UDim2.new(0,0,0,0)
+    title.Text = "GUI RUTA by Javic"
+    title.BackgroundTransparency = 1
+    title.TextColor3 = Color3.new(1,1,1)
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 20
+    title.Parent = frame
+
+    -- Botón Guardar Ruta
+    local guardarBtn = Instance.new("TextButton")
+    guardarBtn.Size = UDim2.new(0.9,0,0,35)
+    guardarBtn.Position = UDim2.new(0.05,0,0,35)
+    guardarBtn.Text = "Guardar Ruta"
+    guardarBtn.TextColor3 = Color3.new(1,1,1)
+    guardarBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+    guardarBtn.Font = Enum.Font.SourceSans
+    guardarBtn.TextSize = 17
+    guardarBtn.Parent = frame
+
+    -- Botón Iniciar Ruta
+    local iniciarBtn = Instance.new("TextButton")
+    iniciarBtn.Size = UDim2.new(0.9,0,0,35)
+    iniciarBtn.Position = UDim2.new(0.05,0,0,75)
+    iniciarBtn.Text = "Iniciar Ruta"
+    iniciarBtn.TextColor3 = Color3.new(1,1,1)
+    iniciarBtn.BackgroundColor3 = Color3.fromRGB(60,130,200)
+    iniciarBtn.Font = Enum.Font.SourceSans
+    iniciarBtn.TextSize = 17
+    iniciarBtn.Parent = frame
+
+    -- Slider Duración
+    local durLabel = Instance.new("TextLabel")
+    durLabel.Size = UDim2.new(1,0,0,20)
+    durLabel.Position = UDim2.new(0,0,0,120)
+    durLabel.BackgroundTransparency = 1
+    durLabel.Text = "Duración total: "..rutaDuracion.."s"
+    durLabel.TextColor3 = Color3.new(1,1,1)
+    durLabel.TextSize = 15
+    durLabel.Parent = frame
+
+    local durSlider = Instance.new("TextButton")
+    durSlider.Size = UDim2.new(0.9,0,0,25)
+    durSlider.Position = UDim2.new(0.05,0,0,145)
+    durSlider.BackgroundColor3 = Color3.fromRGB(90,90,90)
+    durSlider.Text = "Cambiar Duración"
+    durSlider.TextColor3 = Color3.new(1,1,1)
+    durSlider.Parent = frame
+
+    -- Slider Velocidad Ruta
+    local velLabel = Instance.new("TextLabel")
+    velLabel.Size = UDim2.new(1,0,0,20)
+    velLabel.Position = UDim2.new(0,0,0,175)
+    velLabel.BackgroundTransparency =
